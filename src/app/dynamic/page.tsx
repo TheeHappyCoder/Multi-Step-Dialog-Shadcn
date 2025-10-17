@@ -3,7 +3,8 @@
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { MultiStepDialog } from "@/components/ui/multi-step-dialog"
-import { Pencil, DollarSign, ArrowLeftRight } from "lucide-react"
+import { Pencil, DollarSign, ArrowLeftRight, CheckCircle2 } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 export default function DynamicPage() {
   const [open, setOpen] = React.useState(false)
@@ -21,131 +22,129 @@ export default function DynamicPage() {
     (t) => t.direction === "in" || t.direction === "out"
   )
 
+  // Unlock logic: only next step is allowed, not all future steps
   const canNavigateToStep = (target: string, current: string) => {
     const order = ["names", "amounts", "directions"]
     const cur = order.indexOf(current)
     const next = order.indexOf(target)
 
-    // Always allow backward
+    // always allow backward
     if (next <= cur) return true
 
-    // Prevent moving forward unless validated
+    // step 1 unlocks only step 2
     if (current === "names" && !allNamed) return false
+    if (current === "names" && next > cur + 1) return false
+
+    // step 2 unlocks only step 3
     if (current === "amounts" && !allAmounts) return false
+    if (current === "amounts" && next > cur + 1) return false
+
     return true
   }
 
-  // --- Step 1: Name Transactions ---
+  /* -------------------------------------------------------------------------- */
+  /*                              STEP COMPONENTS                              */
+  /* -------------------------------------------------------------------------- */
+
   const NameStep = (
-    <div className="space-y-6">
-      <h3 className="text-lg font-medium">Step 1: Assign Names</h3>
-      <p className="text-sm text-muted-foreground">
-        Give each transaction a name.
-      </p>
-      <div className="space-y-4">
-        {transactions.map((t, i) => (
-          <div key={t.id} className="flex items-center gap-2">
-            <input
-              type="text"
-              value={t.name}
-              onChange={(e) => {
-                const updated = [...transactions]
-                updated[i].name = e.target.value
-                setTransactions(updated)
-              }}
-              placeholder={`Transaction ${t.id} name`}
-              className="border rounded-md px-3 py-2 flex-1"
-            />
-            <span className="text-sm text-muted-foreground">
-              {t.category}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <StepSection
+      title="Step 1: Assign Names"
+      description="Give each transaction a descriptive name."
+    >
+      {transactions.map((t, i) => (
+        <div key={t.id} className="flex items-center gap-3">
+          <input
+            type="text"
+            value={t.name}
+            onChange={(e) => {
+              const updated = [...transactions]
+              updated[i].name = e.target.value
+              setTransactions(updated)
+            }}
+            placeholder={`Transaction ${t.id} name`}
+            className="border bg-background rounded-md px-3 py-2 flex-1 transition-all focus:ring-2 focus:ring-primary/40"
+          />
+          <span className="text-xs text-muted-foreground font-medium">
+            {t.category}
+          </span>
+        </div>
+      ))}
+    </StepSection>
   )
 
-  // --- Step 2: Amounts ---
   const AmountStep = (
-    <div className="space-y-6">
-      <h3 className="text-lg font-medium">Step 2: Enter Amounts</h3>
-      <p className="text-sm text-muted-foreground">
-        Enter an amount for each transaction.
-      </p>
-      <div className="space-y-4">
-        {transactions.map((t, i) => (
-          <div key={t.id} className="flex items-center gap-2">
-            <input
-              type="number"
-              value={t.amount || ""}
-              onChange={(e) => {
-                const updated = [...transactions]
-                updated[i].amount = Number(e.target.value)
-                setTransactions(updated)
-              }}
-              placeholder={`Amount for ${t.name || "transaction"}`}
-              className="border rounded-md px-3 py-2 flex-1"
-            />
-            <span className="text-sm text-muted-foreground">
-              {t.category}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <StepSection
+      title="Step 2: Enter Amounts"
+      description="Provide amounts for each transaction."
+    >
+      {transactions.map((t, i) => (
+        <div key={t.id} className="flex items-center gap-3">
+          <input
+            type="number"
+            value={t.amount || ""}
+            onChange={(e) => {
+              const updated = [...transactions]
+              updated[i].amount = Number(e.target.value)
+              setTransactions(updated)
+            }}
+            placeholder={`Amount for ${t.name || "transaction"}`}
+            className="border bg-background rounded-md px-3 py-2 flex-1 transition-all focus:ring-2 focus:ring-primary/40"
+          />
+          <span className="text-xs text-muted-foreground font-medium">
+            {t.category}
+          </span>
+        </div>
+      ))}
+    </StepSection>
   )
 
-  // --- Step 3: Direction ---
   const DirectionStep = (
-    <div className="space-y-6">
-      <h3 className="text-lg font-medium">Step 3: Direction</h3>
-      <p className="text-sm text-muted-foreground">
-        Mark each transaction as incoming or outgoing.
-      </p>
-      <div className="space-y-4">
-        {transactions.map((t, i) => (
-          <div key={t.id} className="flex items-center gap-4">
-            <span className="w-32 text-sm font-medium">
-              {t.name || `Transaction ${t.id}`}
-            </span>
-            <select
-              value={t.direction}
-              onChange={(e) => {
-                const updated = [...transactions]
-                updated[i].direction = e.target.value
-                setTransactions(updated)
-              }}
-              className="border rounded-md px-2 py-2"
-            >
-              <option value="">Select...</option>
-              <option value="in">Incoming</option>
-              <option value="out">Outgoing</option>
-            </select>
-          </div>
-        ))}
-      </div>
-    </div>
+    <StepSection
+      title="Step 3: Direction"
+      description="Mark each transaction as incoming or outgoing."
+    >
+      {transactions.map((t, i) => (
+        <div key={t.id} className="flex items-center gap-4">
+          <span className="w-32 text-sm font-medium text-foreground/90">
+            {t.name || `Transaction ${t.id}`}
+          </span>
+          <select
+            value={t.direction}
+            onChange={(e) => {
+              const updated = [...transactions]
+              updated[i].direction = e.target.value
+              setTransactions(updated)
+            }}
+            className="border bg-background rounded-md px-2 py-2 flex-1 transition-all focus:ring-2 focus:ring-primary/40"
+          >
+            <option value="">Select...</option>
+            <option value="in">Incoming</option>
+            <option value="out">Outgoing</option>
+          </select>
+        </div>
+      ))}
+    </StepSection>
   )
 
   const steps = [
     {
       id: "names",
       label: "Names",
-      description: "Assign names to transactions",
+      description: "Assign names",
       icon: <Pencil className="w-4 h-4" />,
       content: NameStep,
     },
     {
       id: "amounts",
       label: "Amounts",
-      description: "Enter the amounts",
+      description: "Enter values",
       icon: <DollarSign className="w-4 h-4" />,
       content: AmountStep,
     },
     {
       id: "directions",
       label: "Directions",
-      description: "Set incoming or outgoing",
+      description: "Define type",
       icon: <ArrowLeftRight className="w-4 h-4" />,
       content: DirectionStep,
     },
@@ -153,7 +152,12 @@ export default function DynamicPage() {
 
   return (
     <div className="flex items-center justify-center bg-background">
-      <Button className="cursor-pointer" onClick={() => setOpen(true)}>Open Dynamic Multi-Step Dialog</Button>
+      <Button
+        className="cursor-pointer"
+        onClick={() => setOpen(true)}
+      >
+        Open Dynamic Multi-Step Dialog
+      </Button>
 
       <MultiStepDialog
         open={open}
@@ -164,11 +168,33 @@ export default function DynamicPage() {
         <MultiStepDialog.Content>
           <MultiStepDialog.Header
             title="Transaction Setup"
-            description="Review and confirm your transaction details."
-          />
+            description="Configure and validate your transaction details."
+          >
+            <MultiStepDialog.Progress className="bg-muted/40" />
+          </MultiStepDialog.Header>
 
           <div className="flex flex-1 min-h-0">
-            <MultiStepDialog.Sidebar />
+            <MultiStepDialog.Sidebar>
+              <MultiStepDialog.StepList>
+                {steps.map((step, index) => {
+                  const state =
+                    index === 0 && allNamed
+                      ? "complete"
+                      : index === 1 && allAmounts
+                      ? "complete"
+                      : index === 2 && allDirections
+                      ? "complete"
+                      : "idle"
+
+                  return (
+                    <MultiStepDialog.StepItem key={step.id} step={step}>
+                      <StepIndicator state={state} />
+                    </MultiStepDialog.StepItem>
+                  )
+                })}
+              </MultiStepDialog.StepList>
+            </MultiStepDialog.Sidebar>
+
             <MultiStepDialog.Body />
           </div>
 
@@ -200,4 +226,59 @@ export default function DynamicPage() {
       </MultiStepDialog>
     </div>
   )
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              STEP WRAPPER UI                               */
+/* -------------------------------------------------------------------------- */
+
+function StepSection({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description?: string
+  children?: React.ReactNode
+}) {
+  return (
+    <div className="space-y-5 animate-in fade-in duration-200">
+      <div>
+        <h3 className="text-lg font-medium text-foreground">{title}</h3>
+        {description && (
+          <p className="text-sm text-muted-foreground mt-1">{description}</p>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              STEP INDICATOR                                */
+/* -------------------------------------------------------------------------- */
+
+function StepIndicator({
+  state,
+}: {
+  state?: "idle" | "valid" | "error" | "complete"
+}) {
+  const base =
+    "ml-auto flex items-center justify-center w-4 h-4 rounded-full transition-all duration-300"
+  const colors = {
+    idle: "bg-muted-foreground/30",
+    valid: "bg-primary/70",
+    error: "bg-destructive/70",
+    complete: "text-green-500",
+  }[state ?? "idle"]
+
+  if (state === "complete") {
+    return (
+      <span className={cn(base, colors)}>
+        <CheckCircle2 className="w-7 h-7" />
+      </span>
+    )
+  }
+
+  return <span className={cn(base, colors)} />
 }

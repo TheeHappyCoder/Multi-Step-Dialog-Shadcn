@@ -96,7 +96,9 @@ export default function StandardPage() {
           <MultiStepDialog.Header
             title="Project Setup"
             description="Configure your project settings"
-          />
+          >
+            <MultiStepDialog.Progress />
+          </MultiStepDialog.Header>
           <div className="flex flex-1 min-h-0">
             <MultiStepDialog.Sidebar />
             <MultiStepDialog.Body />

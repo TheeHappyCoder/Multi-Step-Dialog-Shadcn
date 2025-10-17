@@ -22,6 +22,7 @@ export interface Step {
   description?: string
   icon?: React.ReactNode
   content: React.ReactNode
+  state?: "idle" | "valid" | "error" | "complete"
 }
 
 interface MultiStepDialogContextValue {
@@ -44,7 +45,7 @@ function useMultiStepDialog() {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                 PROPS API                                 */
+/*                                 ROOT WRAPPER                              */
 /* -------------------------------------------------------------------------- */
 
 export interface MultiStepDialogProps {
@@ -52,18 +53,9 @@ export interface MultiStepDialogProps {
   onOpenChange: (open: boolean) => void
   steps: Step[]
   initialStep?: string
-  children: React.ReactNode
-
-  /**
-   * Optional guard function. Returning `false` will block navigation.
-   * Runs whenever a user attempts to change steps (via next, prev, or sidebar click).
-   */
   canNavigateToStep?: (targetId: string, currentId: string) => boolean
+  children: React.ReactNode
 }
-
-/* -------------------------------------------------------------------------- */
-/*                                 ROOT WRAPPER                              */
-/* -------------------------------------------------------------------------- */
 
 export function MultiStepDialog({
   open,
@@ -75,21 +67,15 @@ export function MultiStepDialog({
 }: MultiStepDialogProps) {
   const first = initialStep ?? steps?.[0]?.id
   const [activeStep, setActiveStep] = React.useState(first)
-  
-  // Keep in sync if the parent changes `initialStep`
+
   React.useEffect(() => {
-    if (initialStep && initialStep !== activeStep) {
-      setActiveStep(initialStep)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (initialStep && initialStep !== activeStep) setActiveStep(initialStep)
   }, [initialStep])
 
-  // Reset if current activeStep is no longer valid (e.g. steps array changes)
   React.useEffect(() => {
     if (!steps.find((s) => s.id === activeStep)) {
       setActiveStep(steps[0]?.id)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [steps])
 
   const goToStep = React.useCallback(
@@ -158,7 +144,6 @@ MultiStepDialog.Content = React.forwardRef<
         <DialogPrimitive.Title>Dialog</DialogPrimitive.Title>
       </VisuallyHidden>
 
-      {/* Close button */}
       <DialogPrimitive.Close asChild>
         <button
           type="button"
@@ -184,16 +169,17 @@ MultiStepDialog.Header = function Header({
   description,
   action,
   className,
+  children,
 }: {
   title?: React.ReactNode
   description?: React.ReactNode
   action?: React.ReactNode
+  children?: React.ReactNode
   className?: string
 }) {
   return (
-    <div
-      className={cn("shrink-0 sticky top-0 z-20 border-b bg-background", className)}
-    >
+    <div className={cn("shrink-0 sticky top-0 z-20 border-b bg-background", className)}>
+      {children}
       <div className="px-6 pt-6 pb-4">
         <DialogFixedHeader
           title={title}
@@ -206,35 +192,91 @@ MultiStepDialog.Header = function Header({
 }
 
 /* -------------------------------------------------------------------------- */
+/*                                 PROGRESS                                  */
+/* -------------------------------------------------------------------------- */
+
+MultiStepDialog.Progress = function Progress({
+  className,
+  children,
+}: {
+  className?: string
+  children?:
+    | React.ReactNode
+    | ((info: { index: number; total: number; percent: number }) => React.ReactNode)
+}) {
+  const { steps, activeStep } = useMultiStepDialog()
+  const index = steps.findIndex((s) => s.id === activeStep)
+  const total = steps.length
+  const percent = ((index + 1) / total) * 100
+
+  return (
+    <div className={cn("relative h-1 bg-muted/50", className)}>
+      <div
+        className="absolute left-0 top-0 h-full bg-primary transition-all duration-300"
+        style={{ width: `${percent}%` }}
+        data-progress={percent}
+      />
+      {typeof children === "function"
+        ? children({ index, total, percent })
+        : children}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
 /*                                  SIDEBAR                                  */
 /* -------------------------------------------------------------------------- */
 
-MultiStepDialog.Sidebar = function Sidebar({ className }: { className?: string }) {
+MultiStepDialog.Sidebar = function Sidebar({
+  className,
+  children,
+}: {
+  className?: string
+  children?: React.ReactNode
+}) {
   const { steps } = useMultiStepDialog()
   return (
     <aside
       className={cn("shrink-0 w-64 border-r bg-muted/30 overflow-y-auto", className)}
     >
-      <nav className="flex flex-col">
-        {steps.map((step) => (
-          <MultiStepDialog.Step key={step.id} step={step} />
-        ))}
-      </nav>
+      {children ?? (
+        <MultiStepDialog.StepList>
+          {steps.map((step) => (
+            <MultiStepDialog.StepItem key={step.id} step={step} />
+          ))}
+        </MultiStepDialog.StepList>
+      )}
     </aside>
   )
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                 STEP BUTTON                               */
+/*                                STEP LIST / ITEM                           */
 /* -------------------------------------------------------------------------- */
 
-MultiStepDialog.Step = function Step({ step }: { step: Step }) {
+MultiStepDialog.StepList = function StepList({
+  className,
+  children,
+}: {
+  className?: string
+  children?: React.ReactNode
+}) {
+  // ❌ no border-t or border-b on container
+  // ✅ the items themselves handle all borders
+  return <nav className={cn("flex flex-col", className)}>{children}</nav>
+}
+
+MultiStepDialog.StepItem = function StepItem({
+  step,
+  children,
+}: {
+  step: Step
+  children?: React.ReactNode
+}) {
   const { steps, activeStep, goToStep, canNavigateToStep } = useMultiStepDialog()
   const currentIndex = steps.findIndex((s) => s.id === activeStep)
   const targetIndex = steps.findIndex((s) => s.id === step.id)
   const isActive = activeStep === step.id
-
-  // Determine if this step is navigable
   const disabled =
     !!canNavigateToStep &&
     !canNavigateToStep(step.id, activeStep) &&
@@ -244,16 +286,18 @@ MultiStepDialog.Step = function Step({ step }: { step: Step }) {
     <button
       disabled={disabled}
       onClick={() => goToStep(step.id)}
+      data-active={isActive || undefined}
+      data-disabled={disabled || undefined}
+      data-state={step.state ?? "idle"}
       className={cn(
-        "group flex flex-col items-start gap-1 px-4 py-4 text-sm w-full text-left border-b transition-colors",
+        // ✅ every single item has a border-b, always.
+        "group flex flex-col items-start gap-1 px-4 py-4 text-sm w-full text-left transition-colors border-b border-border",
         disabled
           ? "opacity-50 cursor-not-allowed text-muted-foreground"
           : "hover:bg-muted/70 focus:bg-muted focus:outline-none",
-        isActive && !disabled
+        isActive
           ? "bg-muted text-foreground font-medium"
-          : !disabled
-          ? "text-muted-foreground"
-          : ""
+          : "text-muted-foreground"
       )}
     >
       <div className="flex items-center gap-2 font-medium">
@@ -270,9 +314,11 @@ MultiStepDialog.Step = function Step({ step }: { step: Step }) {
           {step.description}
         </span>
       )}
+      {children}
     </button>
   )
 }
+
 
 /* -------------------------------------------------------------------------- */
 /*                                    BODY                                   */
@@ -283,9 +329,11 @@ MultiStepDialog.Body = function Body({ className }: { className?: string }) {
   const current = steps.find((s) => s.id === activeStep)
   return (
     <main className={cn("flex-1 flex flex-col overflow-hidden", className)}>
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="flex-1 overflow-y-auto px-6 py-6 animate-in fade-in duration-200">
         {current?.content ?? (
-          <p className="text-sm text-muted-foreground">No content for this step.</p>
+          <p className="text-sm text-muted-foreground">
+            No content for this step.
+          </p>
         )}
       </div>
     </main>
